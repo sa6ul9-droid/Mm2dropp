@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Открытие Кейса</title>
+  <!-- Подключаем Telegram Web App API -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--tg-theme-bg-color, #18181e);
+      color: var(--tg-theme-text-color, #ffffff);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+      font-size: 22px;
+    }
+
+    /* Окно рулетки */
+    .roulette-wrapper {
+      position: relative;
+      width: 90%;
+      max-width: 450px;
+      height: 130px;
+      background: #0f0f13;
+      border: 2px solid #2b2b36;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+    }
+
+    /* Центральный указатель (Стрелка) */
+    .pointer {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 100%;
+      background: #ff4757;
+      z-index: 10;
+      box-shadow: 0 0 10px #ff4757;
+    }
+
+    .pointer::before, .pointer::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+    }
+
+    .pointer::before {
+      top: 0;
+      border-top: 10px solid #ff4757;
+    }
+
+    .pointer::after {
+      bottom: 0;
+      border-bottom: 10px solid #ff4757;
+    }
+
+    /* Лента с карточками */
+    .roulette-track {
+      display: flex;
+      align-items: center;
+      height: 100%;
+      position: absolute;
+      left: 0;
+      top: 0;
+      will-change: transform;
+    }
+
+    /* Карточка предмета */
+    .item-card {
+      min-width: 100px;
+      height: 100px;
+      margin: 0 5px;
+      border-radius: 8px;
+      background: #1e1e28;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: bold;
+      border-bottom: 4px solid #fff;
+      user-select: none;
+    }
+
+    /* Цвета редких предметов */
+    .common { border-color: #b0c3d9; }
+    .rare { border-color: #4b69ff; }
+    .epic { border-color: #d32ce6; }
+    .legendary { border-color: #eb4b4b; }
+
+    /* Кнопка запуска */
+    .spin-btn {
+      margin-top: 25px;
+      padding: 14px 40px;
+      font-size: 18px;
+      font-weight: bold;
+      background-color: var(--tg-theme-button-color, #2ed573);
+      color: var(--tg-theme-button-text-color, #ffffff);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(46, 213, 115, 0.4);
+      transition: transform 0.1s;
+    }
+
+    .spin-btn:active {
+      transform: scale(0.96);
+    }
+
+    .spin-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Модальное окно выигрыша */
+    #result {
+      margin-top: 20px;
+      font-size: 18px;
+      font-weight: bold;
+      height: 24px;
+      color: #eccc68;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🎰 Крути кейс!</h1>
+
+  <div class="roulette-wrapper">
+    <div class="pointer"></div>
+    <div class="roulette-track" id="track"></div>
+  </div>
+
+  <div id="result"></div>
+
+  <button class="spin-btn" id="spinBtn">Открыть кейс</button>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    // Список возможных призов
+    const ITEMS = [
+      { name: '100 Монет', rarity: 'common' },
+      { name: '500 Монет', rarity: 'rare' },
+      { name: 'VIP на 3 дня', rarity: 'epic' },
+      { name: 'Секретный Пак', rarity: 'legendary' },
+      { name: '50 Монет', rarity: 'common' },
+      { name: 'Скидка 20%', rarity: 'rare' }
+    ];
+
+    const track = document.getElementById('track');
+    const spinBtn = document.getElementById('spinBtn');
+    const resultDiv = document.getElementById('result');
+
+    const CARD_WIDTH = 110; // Ширина карточки (100px + 10px margin)
+    let cardsList = [];
+
+    // Генерация ленты призов (создаем много повторяющихся карточек)
+    function buildTrack() {
+      track.innerHTML = '';
+      cardsList = [];
+      
+      // Генерируем 80 предметов для эффекта долгой прокрутки
+      for (let i = 0; i < 80; i++) {
+        const randomItem = ITEMS[Math.floor(Math.random() * ITEMS.length)];
+        cardsList.push(randomItem);
+
+        const card = document.createElement('div');
+        card.className = `item-card ${randomItem.rarity}`;
+        card.innerHTML = `<span>${randomItem.name}</span>`;
+        track.appendChild(card);
+      }
+    }
+
+    buildTrack();
+
+    let isSpinning = false;
+
+    spinBtn.addEventListener('click', () => {
+      if (isSpinning) return;
+      isSpinning = true;
+      spinBtn.disabled = true;
+      resultDiv.innerText = '';
+
+      // Сбрасываем позицию ленты
+      track.style.transition = 'none';
+      track.style.transform = 'translateX(0px)';
+
+      // Форсируем перерисовку браузером
+      track.offsetHeight;
+
+      // Выбираем выигрышный индекс (например, между 50 и 70 карточкой)
+      const winningIndex = Math.floor(Math.random() * 20) + 50;
+      const prize = cardsList[winningIndex];
+
+      // Вычисляем смещение так, чтобы карточка встала ровно по центру указателя
+      const wrapperWidth = document.querySelector('.roulette-wrapper').offsetWidth;
+      const centerOffset = (wrapperWidth / 2) - (CARD_WIDTH / 2);
+      
+      // Добавляем небольшой случайный сдвиг внутри самой карточки для реалистичности
+      const randomRandomShift = Math.floor(Math.random() * 40) - 20; 
+      const targetPosition = -(winningIndex * CARD_WIDTH - centerOffset + randomRandomShift);
+
+      // Запускаем анимацию (5 секунд с эффектом замедления cubic-bezier)
+      track.style.transition = 'transform 5s cubic-bezier(0.15, 0.85, 0.35, 1.05)';
+      track.style.transform = `translateX(${targetPosition}px)`;
+
+      // Когда рулетка остановилась
+      setTimeout(() => {
+        resultDiv.innerText = `🎉 Вы выиграли: ${prize.name}!`;
+        spinBtn.disabled = false;
+        isSpinning = false;
+
+        // Отправляем результат боту в Telegram
+        tg.sendData(JSON.stringify({ prize: prize.name }));
+      }, 5200);
+    });
+  </script>
+</body>
+</html>
